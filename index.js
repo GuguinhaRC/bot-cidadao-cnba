@@ -4,7 +4,6 @@ const fs = require('fs');
 const path = require('path');
 const {
   Client,
-  Collection,
   GatewayIntentBits,
   REST,
   Routes
@@ -15,15 +14,11 @@ const {
 ========================= */
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds
-  ]
+  intents: [GatewayIntentBits.Guilds]
 });
 
-client.commands = new Collection();
-
 /* =========================
-   LOAD COMMANDS (SUBPASTAS)
+   LOAD SLASH COMMANDS
 ========================= */
 
 const commands = [];
@@ -34,30 +29,26 @@ const folders = fs.readdirSync(commandsPath);
 for (const folder of folders) {
   const folderPath = path.join(commandsPath, folder);
 
-  if (fs.statSync(folderPath).isDirectory()) {
-    const commandFiles = fs.readdirSync(folderPath)
-      .filter(file => file.endsWith('.js'));
+  if (!fs.statSync(folderPath).isDirectory()) continue;
 
-    for (const file of commandFiles) {
-      const filePath = path.join(folderPath, file);
-      const command = require(filePath);
+  const commandFiles = fs.readdirSync(folderPath)
+    .filter(file => file.endsWith('.js'));
 
-      // 🔥 SUPORTE A ARRAY DE COMMANDS
-      if (Array.isArray(command)) {
-        for (const cmd of command) {
-          client.commands.set(cmd.name, cmd);
-          commands.push(cmd.toJSON());
-        }
-      } else {
-        client.commands.set(command.data.name, command);
-        commands.push(command.data.toJSON());
+  for (const file of commandFiles) {
+    const filePath = path.join(folderPath, file);
+    const exported = require(filePath);
+
+    // 👇 SEU CASO: EXPORTA ARRAY
+    if (Array.isArray(exported)) {
+      for (const cmd of exported) {
+        commands.push(cmd.toJSON());
       }
     }
   }
 }
 
 /* =========================
-   REGISTER SLASH COMMANDS
+   REGISTER COMMANDS
 ========================= */
 
 const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -71,40 +62,11 @@ const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
       { body: commands }
     );
 
-    console.log('✅ Comandos registrados com sucesso!');
+    console.log(`✅ ${commands.length} comandos registrados com sucesso!`);
   } catch (error) {
     console.error('❌ Erro ao registrar comandos:', error);
   }
 })();
-
-/* =========================
-   INTERACTIONS
-========================= */
-
-client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-
-  const command = client.commands.get(interaction.commandName);
-  if (!command) return;
-
-  try {
-    // Caso seja array-style (seus commands atuais)
-    if (command.execute) {
-      await command.execute(interaction);
-    } else {
-      await interaction.reply({
-        content: '⚠️ Este comando ainda não possui execução.',
-        ephemeral: true
-      });
-    }
-  } catch (error) {
-    console.error(error);
-    await interaction.reply({
-      content: '❌ Ocorreu um erro ao executar este comando.',
-      ephemeral: true
-    });
-  }
-});
 
 /* =========================
    READY
