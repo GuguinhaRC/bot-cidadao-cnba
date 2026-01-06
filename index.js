@@ -98,47 +98,55 @@ client.on("interactionCreate", async interaction => {
   // 🆔 CRIAR RG
   // ===============================
   if (interaction.commandName === "criar_rg") {
-    await interaction.deferReply(); // 🔥 ESSENCIAL
+    await interaction.deferReply(); // 🔧 ADIÇÃO NECESSÁRIA
 
-    const userId = interaction.user.id;
+    try {
+      const userId = interaction.user.id;
 
-    if (db[userId]) {
-      return interaction.editReply({
-        content: "❌ Você já possui um RG registrado."
+      if (db[userId]) {
+        return interaction.editReply({
+          content: "❌ Você já possui um RG registrado."
+        });
+      }
+
+      const nome = interaction.options.getString("nome");
+      const idade = interaction.options.getInteger("idade");
+      const profissao = interaction.options.getString("profissao");
+      const nacionalidade = interaction.options.getString("nacionalidade");
+      const roblox = interaction.options.getString("roblox");
+
+      const rgNumero = Math.floor(100000 + Math.random() * 900000);
+
+      db[userId] = {
+        nome,
+        idade,
+        profissao,
+        nacionalidade,
+        roblox,
+        rg: rgNumero,
+        status: "LIMPO"
+      };
+
+      saveDB(db);
+
+      const image = await gerarRG(
+        db[userId],
+        interaction.user.displayAvatarURL({ extension: "png" })
+      );
+
+      const attachment = new AttachmentBuilder(image, { name: "rg.png" });
+
+      await interaction.editReply({
+        content: "✅ **RG RP criado com sucesso!**",
+        files: [attachment]
+      });
+
+    } catch (err) {
+      console.error("ERRO CRIAR_RG:", err);
+      await interaction.editReply({
+        content: "❌ Erro ao criar o RG. Verifique os arquivos do bot."
       });
     }
-
-    const nome = interaction.options.getString("nome");
-    const idade = interaction.options.getInteger("idade");
-    const profissao = interaction.options.getString("profissao");
-    const nacionalidade = interaction.options.getString("nacionalidade");
-    const roblox = interaction.options.getString("roblox");
-
-    const rgNumero = Math.floor(100000 + Math.random() * 900000);
-
-    db[userId] = {
-      nome,
-      idade,
-      profissao,
-      nacionalidade,
-      roblox,
-      rg: rgNumero,
-      status: "LIMPO"
-    };
-
-    saveDB(db);
-
-    const image = await gerarRG(
-      db[userId],
-      interaction.user.displayAvatarURL({ extension: "png" })
-    );
-
-    const attachment = new AttachmentBuilder(image, { name: "rg.png" });
-
-    await interaction.editReply({
-      content: "✅ **RG RP criado com sucesso!**",
-      files: [attachment]
-    });
   }
 
   // ===============================
