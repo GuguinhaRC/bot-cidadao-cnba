@@ -1,7 +1,5 @@
 require('dotenv').config();
 
-const fs = require('fs');
-const path = require('path');
 const {
   Client,
   GatewayIntentBits,
@@ -9,6 +7,9 @@ const {
   Routes,
   PermissionFlagsBits
 } = require('discord.js');
+
+const { getRobloxAvatar } = require('./services/roblox');
+const { gerarRG } = require('./utils/gerarRG');
 
 /* =========================
    CLIENT
@@ -25,6 +26,7 @@ const client = new Client({
 const rgCommand = {
   name: 'registrar_rg',
   description: 'Registrar RG RP (uso exclusivo da polícia)',
+  default_member_permissions: PermissionFlagsBits.ManageGuild.toString(),
   options: [
     {
       name: 'nome',
@@ -49,9 +51,14 @@ const rgCommand = {
       description: 'Nacionalidade RP',
       type: 3,
       required: true
+    },
+    {
+      name: 'roblox',
+      description: 'Username do Roblox',
+      type: 3,
+      required: true
     }
-  ],
-  default_member_permissions: PermissionFlagsBits.ManageGuild.toString()
+  ]
 };
 
 /* =========================
@@ -62,21 +69,21 @@ const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
 (async () => {
   try {
-    console.log('🔄 Registrando comando de RG...');
+    console.log('🔄 Registrando comando /registrar_rg...');
 
     await rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
       { body: [rgCommand] }
     );
 
-    console.log('✅ Comando /registrar_rg registrado!');
+    console.log('✅ Comando /registrar_rg registrado com sucesso!');
   } catch (error) {
-    console.error('❌ Erro ao registrar comando RG:', error);
+    console.error('❌ Erro ao registrar comando:', error);
   }
 })();
 
 /* =========================
-   EXECUTION
+   INTERACTION
 ========================= */
 
 client.on('interactionCreate', async interaction => {
@@ -92,21 +99,42 @@ client.on('interactionCreate', async interaction => {
     });
   }
 
+  await interaction.deferReply();
+
   const nome = interaction.options.getString('nome');
   const idade = interaction.options.getInteger('idade');
   const profissao = interaction.options.getString('profissao');
   const nacionalidade = interaction.options.getString('nacionalidade');
+  const robloxUser = interaction.options.getString('roblox');
 
-  // 📄 Resposta temporária (imagem vem depois)
-  await interaction.reply({
-    content:
-      `🆔 **RG RP REGISTRADO**\n\n` +
-      `👤 Nome: ${nome}\n` +
-      `🎂 Idade: ${idade}\n` +
-      `💼 Profissão: ${profissao}\n` +
-      `🌎 Nacionalidade: ${nacionalidade}\n\n` +
-      `📌 *Em breve: RG em imagem (Bahia / Brasil)*`,
-    ephemeral: false
+  // 🎮 Avatar Roblox
+  const avatarUrl = await getRobloxAvatar(robloxUser);
+  if (!avatarUrl) {
+    return interaction.editReply('❌ Usuário do Roblox não encontrado.');
+  }
+
+  // 🆔 Número de RG RP
+  const rgNumero = Math.floor(100000 + Math.random() * 900000);
+
+  // 🎨 Gerar imagem do RG
+  const rgImage = await gerarRG({
+    nome,
+    idade,
+    profissao,
+    nacionalidade,
+    rg: rgNumero,
+    avatar: avatarUrl
+  });
+
+  // 📤 Enviar RG
+  await interaction.editReply({
+    content: '🆔 **RG RP GERADO COM SUCESSO**',
+    files: [
+      {
+        attachment: rgImage,
+        name: 'rg-rp.png'
+      }
+    ]
   });
 });
 
