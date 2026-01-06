@@ -1,241 +1,195 @@
-require('dotenv').config();
+// ===============================
+// 🤖 BOT CIDADÃO RP - INDEX FINAL
+// ===============================
 
-const { 
-  Client, 
-  GatewayIntentBits, 
-  REST, 
-  Routes, 
-  EmbedBuilder, 
-  AttachmentBuilder 
-} = require('discord.js');
+// 🔹 Imports
+require("dotenv").config();
+const fs = require("fs");
+const path = require("path");
+const {
+  Client,
+  GatewayIntentBits,
+  SlashCommandBuilder,
+  REST,
+  Routes,
+  AttachmentBuilder,
+  EmbedBuilder
+} = require("discord.js");
+const { createCanvas, loadImage } = require("canvas");
 
-const sqlite3 = require('sqlite3').verbose();
-const { createCanvas, loadImage } = require('canvas');
-
-/* ===============================
-   🤖 CLIENT
-================================ */
+// ===============================
+// 🔹 CLIENT
+// ===============================
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-/* ===============================
-   💾 DATABASE (PERMANENTE)
-================================ */
-const db = new sqlite3.Database('./database.sqlite');
+// ===============================
+// 🔹 BANCO DE DADOS (JSON)
+// ===============================
+const dbPath = path.join(__dirname, "database", "rg.json");
 
-db.run(`
-CREATE TABLE IF NOT EXISTS rgs (
-  userId TEXT PRIMARY KEY,
-  nome TEXT,
-  idade INTEGER,
-  profissao TEXT,
-  nacionalidade TEXT,
-  roblox TEXT,
-  status TEXT
-)
-`);
+function loadDB() {
+  if (!fs.existsSync(dbPath)) return {};
+  return JSON.parse(fs.readFileSync(dbPath));
+}
 
-/* ===============================
-   📜 SLASH COMMANDS
-================================ */
+function saveDB(data) {
+  fs.writeFileSync(dbPath, JSON.stringify(data, null, 2));
+}
+
+// ===============================
+// 🔹 COMANDOS SLASH
+// ===============================
 const commands = [
-  {
-    name: 'criar_rg',
-    description: 'Criar seu RG RP',
-    options: [
-      { name: 'nome', type: 3, required: true },
-      { name: 'idade', type: 4, required: true },
-      { name: 'profissao', type: 3, required: true },
-      { name: 'nacionalidade', type: 3, required: true },
-      { name: 'roblox', type: 3, required: true }
-    ]
-  },
-  {
-    name: 'ver_rg',
-    description: 'Ver seu RG RP'
-  },
-  {
-    name: 'consultar_rg',
-    description: 'Consultar RG de um cidadão (polícia)',
-    options: [
-      { name: 'cidadao', type: 6, required: true }
-    ]
-  },
-  {
-    name: 'alterar_status',
-    description: 'Alterar status criminal (polícia)',
-    options: [
-      { name: 'cidadao', type: 6, required: true },
-      {
-        name: 'status',
-        type: 3,
-        required: true,
-        choices: [
-          { name: '🟢 Limpo', value: 'limpo' },
-          { name: '🔴 Procurado', value: 'procurado' },
-          { name: '⚫ Preso', value: 'preso' }
-        ]
-      }
-    ]
-  }
-];
+  new SlashCommandBuilder()
+    .setName("criar_rg")
+    .setDescription("📄 Criar seu RG RP")
+    .addStringOption(o => o.setName("nome").setDescription("Nome RP").setRequired(true))
+    .addIntegerOption(o => o.setName("idade").setDescription("Idade").setRequired(true))
+    .addStringOption(o => o.setName("profissao").setDescription("Profissão").setRequired(true))
+    .addStringOption(o => o.setName("nacionalidade").setDescription("Nacionalidade").setRequired(true))
+    .addStringOption(o => o.setName("roblox").setDescription("Nome do personagem Roblox").setRequired(true)),
 
-/* ===============================
-   🚀 REGISTER COMMANDS
-================================ */
-const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+  new SlashCommandBuilder()
+    .setName("status_rg")
+    .setDescription("🚨 Alterar status do RG (POLÍCIA)")
+    .addUserOption(o => o.setName("cidadao").setDescription("Cidadão").setRequired(true))
+    .addStringOption(o =>
+      o.setName("status")
+        .setDescription("Novo status")
+        .setRequired(true)
+        .addChoices(
+          { name: "Limpo", value: "LIMPO" },
+          { name: "Procurado", value: "PROCURADO" },
+          { name: "Preso", value: "PRESO" }
+        )
+    )
+].map(cmd => cmd.toJSON());
 
-(async () => {
+// ===============================
+// 🔹 REGISTRAR COMANDOS
+// ===============================
+client.once("ready", async () => {
+  console.log(`🤖 Bot online como ${client.user.tag}`);
+
+  const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
+
   try {
-    console.log('🔄 Registrando comandos...');
     await rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
       { body: commands }
     );
-    console.log('✅ Comandos registrados!');
+    console.log("✅ Comandos registrados com sucesso!");
   } catch (err) {
-    console.error('❌ Erro ao registrar comandos:', err);
+    console.error("❌ Erro ao registrar comandos:", err);
   }
-})();
+});
 
-/* ===============================
-   🖼️ RG IMAGE GENERATOR
-================================ */
-async function gerarRG(dados, avatarURL) {
+// ===============================
+// 🔹 INTERAÇÕES
+// ===============================
+client.on("interactionCreate", async interaction => {
+  if (!interaction.isChatInputCommand()) return;
+
+  const db = loadDB();
+
+  // ===============================
+  // 🆔 CRIAR RG
+  // ===============================
+  if (interaction.commandName === "criar_rg") {
+    const userId = interaction.user.id;
+
+    if (db[userId]) {
+      return interaction.reply({
+        content: "❌ Você já possui um RG registrado.",
+        ephemeral: true
+      });
+    }
+
+    const nome = interaction.options.getString("nome");
+    const idade = interaction.options.getInteger("idade");
+    const profissao = interaction.options.getString("profissao");
+    const nacionalidade = interaction.options.getString("nacionalidade");
+    const roblox = interaction.options.getString("roblox");
+
+    const rgNumero = Math.floor(100000 + Math.random() * 900000);
+
+    db[userId] = {
+      nome,
+      idade,
+      profissao,
+      nacionalidade,
+      roblox,
+      rg: rgNumero,
+      status: "LIMPO"
+    };
+
+    saveDB(db);
+
+    const image = await gerarRG(db[userId], interaction.user.displayAvatarURL({ extension: "png" }));
+    const attachment = new AttachmentBuilder(image, { name: "rg.png" });
+
+    await interaction.reply({
+      content: "✅ **RG RP criado com sucesso!**",
+      files: [attachment]
+    });
+  }
+
+  // ===============================
+  // 🚨 STATUS RG (POLÍCIA)
+  // ===============================
+  if (interaction.commandName === "status_rg") {
+    if (!interaction.member.roles.cache.some(r => r.name.toLowerCase().includes("policia"))) {
+      return interaction.reply({ content: "❌ Apenas policiais.", ephemeral: true });
+    }
+
+    const user = interaction.options.getUser("cidadao");
+    const status = interaction.options.getString("status");
+
+    if (!db[user.id]) {
+      return interaction.reply({ content: "❌ RG não encontrado.", ephemeral: true });
+    }
+
+    db[user.id].status = status;
+    saveDB(db);
+
+    await interaction.reply(`🚨 Status do RG alterado para **${status}**`);
+  }
+});
+
+// ===============================
+// 🎨 GERAR IMAGEM RG
+// ===============================
+async function gerarRG(data, avatarURL) {
   const canvas = createCanvas(800, 500);
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext("2d");
 
-  const base = await loadImage('./src/assets/rg_base.png');
+  const base = await loadImage(path.join(__dirname, "assets", "rg_base.png"));
   ctx.drawImage(base, 0, 0, 800, 500);
 
   const avatar = await loadImage(avatarURL);
-  ctx.drawImage(avatar, 40, 130, 140, 140);
+  ctx.drawImage(avatar, 40, 120, 150, 150);
 
-  ctx.fillStyle = '#000';
-  ctx.font = '20px Arial';
+  ctx.fillStyle = "#000";
+  ctx.font = "20px Arial";
+  ctx.fillText(`Nome: ${data.nome}`, 220, 160);
+  ctx.fillText(`Idade: ${data.idade}`, 220, 190);
+  ctx.fillText(`Profissão: ${data.profissao}`, 220, 220);
+  ctx.fillText(`Nacionalidade: ${data.nacionalidade}`, 220, 250);
+  ctx.fillText(`RG: ${data.rg}`, 220, 280);
+  ctx.fillText(`Status: ${data.status}`, 220, 310);
 
-  ctx.fillText(`Nome: ${dados.nome}`, 220, 160);
-  ctx.fillText(`Idade: ${dados.idade}`, 220, 200);
-  ctx.fillText(`Profissão: ${dados.profissao}`, 220, 240);
-  ctx.fillText(`Nacionalidade: ${dados.nacionalidade}`, 220, 280);
-  ctx.fillText(`Roblox: ${dados.roblox}`, 220, 320);
-  ctx.fillText(`Status: ${dados.status.toUpperCase()}`, 220, 360);
-
-  if (dados.status === 'procurado') {
-    const selo = await loadImage('./src/assets/selo_procurado.png');
-    ctx.drawImage(selo, 500, 40, 250, 250);
+  if (data.status === "PROCURADO") {
+    ctx.fillStyle = "rgba(255,0,0,0.7)";
+    ctx.font = "bold 60px Arial";
+    ctx.fillText("PROCURADO", 200, 430);
   }
 
   return canvas.toBuffer();
 }
 
-/* ===============================
-   🎮 INTERACTIONS
-================================ */
-client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-
-  const POLICE_ROLE_ID = process.env.POLICE_ROLE_ID;
-
-  /* 👤 CRIAR RG */
-  if (interaction.commandName === 'criar_rg') {
-    db.get(
-      `SELECT * FROM rgs WHERE userId = ?`,
-      [interaction.user.id],
-      async (err, row) => {
-        if (row) {
-          return interaction.reply({
-            content: '🚫 Você já possui um RG registrado.',
-            ephemeral: true
-          });
-        }
-
-        const dados = {
-          userId: interaction.user.id,
-          nome: interaction.options.getString('nome'),
-          idade: interaction.options.getInteger('idade'),
-          profissao: interaction.options.getString('profissao'),
-          nacionalidade: interaction.options.getString('nacionalidade'),
-          roblox: interaction.options.getString('roblox'),
-          status: 'limpo'
-        };
-
-        db.run(
-          `INSERT INTO rgs VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          Object.values(dados)
-        );
-
-        const buffer = await gerarRG(
-          dados,
-          interaction.user.displayAvatarURL({ extension: 'png' })
-        );
-
-        const file = new AttachmentBuilder(buffer, { name: 'rg.png' });
-
-        const embed = new EmbedBuilder()
-          .setTitle('🆔 RG RP — CONEXÃO BAHIA')
-          .setColor('#0A3D62')
-          .setImage('attachment://rg.png');
-
-        interaction.reply({ embeds: [embed], files: [file] });
-      }
-    );
-  }
-
-  /* 👤 VER RG */
-  if (interaction.commandName === 'ver_rg') {
-    db.get(
-      `SELECT * FROM rgs WHERE userId = ?`,
-      [interaction.user.id],
-      async (err, rg) => {
-        if (!rg) {
-          return interaction.reply({
-            content: '❌ Você não possui RG.',
-            ephemeral: true
-          });
-        }
-
-        const buffer = await gerarRG(
-          rg,
-          interaction.user.displayAvatarURL({ extension: 'png' })
-        );
-
-        interaction.reply({
-          files: [new AttachmentBuilder(buffer, { name: 'rg.png' })]
-        });
-      }
-    );
-  }
-
-  /* 👮 POLÍCIA */
-  if (interaction.commandName === 'alterar_status') {
-    if (!interaction.member.roles.cache.has(POLICE_ROLE_ID)) {
-      return interaction.reply({
-        content: '🚫 Apenas policiais podem usar este comando.',
-        ephemeral: true
-      });
-    }
-
-    const cidadao = interaction.options.getUser('cidadao');
-    const status = interaction.options.getString('status');
-
-    db.run(
-      `UPDATE rgs SET status = ? WHERE userId = ?`,
-      [status, cidadao.id]
-    );
-
-    interaction.reply(
-      `⚖️ Status de **${cidadao.tag}** alterado para **${status.toUpperCase()}**`
-    );
-  }
-});
-
-/* ===============================
-   🔐 LOGIN
-================================ */
-client.once('ready', () => {
-  console.log(`🤖 Bot online como ${client.user.tag}`);
-});
-
+// ===============================
+// 🔹 LOGIN
+// ===============================
 client.login(process.env.DISCORD_TOKEN);
