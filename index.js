@@ -1,17 +1,16 @@
 require('dotenv').config();
-const fs = require('fs');
-const path = require('path');
+
+const { 
+  Client, 
+  GatewayIntentBits, 
+  REST, 
+  Routes, 
+  EmbedBuilder, 
+  AttachmentBuilder 
+} = require('discord.js');
+
 const sqlite3 = require('sqlite3').verbose();
 const { createCanvas, loadImage } = require('canvas');
-const {
-  Client,
-  GatewayIntentBits,
-  Collection,
-  REST,
-  Routes,
-  EmbedBuilder,
-  AttachmentBuilder
-} = require('discord.js');
 
 /* ===============================
    🤖 CLIENT
@@ -20,10 +19,8 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-client.commands = new Collection();
-
 /* ===============================
-   💾 BANCO DE DADOS (RG PERMANENTE)
+   💾 DATABASE (PERMANENTE)
 ================================ */
 const db = new sqlite3.Database('./database.sqlite');
 
@@ -40,9 +37,9 @@ CREATE TABLE IF NOT EXISTS rgs (
 `);
 
 /* ===============================
-   🧩 COMMANDS INLINE (SEM PASTA)
+   📜 SLASH COMMANDS
 ================================ */
-const slashCommands = [
+const commands = [
   {
     name: 'criar_rg',
     description: 'Criar seu RG RP',
@@ -55,8 +52,19 @@ const slashCommands = [
     ]
   },
   {
+    name: 'ver_rg',
+    description: 'Ver seu RG RP'
+  },
+  {
+    name: 'consultar_rg',
+    description: 'Consultar RG de um cidadão (polícia)',
+    options: [
+      { name: 'cidadao', type: 6, required: true }
+    ]
+  },
+  {
     name: 'alterar_status',
-    description: 'Alterar status criminal',
+    description: 'Alterar status criminal (polícia)',
     options: [
       { name: 'cidadao', type: 6, required: true },
       {
@@ -74,20 +82,25 @@ const slashCommands = [
 ];
 
 /* ===============================
-   🚀 REGISTRAR SLASH
+   🚀 REGISTER COMMANDS
 ================================ */
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
-  await rest.put(
-    Routes.applicationCommands(process.env.CLIENT_ID),
-    { body: slashCommands }
-  );
-  console.log('✅ Comandos registrados');
+  try {
+    console.log('🔄 Registrando comandos...');
+    await rest.put(
+      Routes.applicationCommands(process.env.CLIENT_ID),
+      { body: commands }
+    );
+    console.log('✅ Comandos registrados!');
+  } catch (err) {
+    console.error('❌ Erro ao registrar comandos:', err);
+  }
 })();
 
 /* ===============================
-   🖼️ GERAR IMAGEM RG
+   🖼️ RG IMAGE GENERATOR
 ================================ */
 async function gerarRG(dados, avatarURL) {
   const canvas = createCanvas(800, 500);
@@ -97,7 +110,7 @@ async function gerarRG(dados, avatarURL) {
   ctx.drawImage(base, 0, 0, 800, 500);
 
   const avatar = await loadImage(avatarURL);
-  ctx.drawImage(avatar, 40, 120, 150, 150);
+  ctx.drawImage(avatar, 40, 130, 140, 140);
 
   ctx.fillStyle = '#000';
   ctx.font = '20px Arial';
@@ -111,7 +124,7 @@ async function gerarRG(dados, avatarURL) {
 
   if (dados.status === 'procurado') {
     const selo = await loadImage('./src/assets/selo_procurado.png');
-    ctx.drawImage(selo, 500, 50, 250, 250);
+    ctx.drawImage(selo, 500, 40, 250, 250);
   }
 
   return canvas.toBuffer();
@@ -125,9 +138,7 @@ client.on('interactionCreate', async interaction => {
 
   const POLICE_ROLE_ID = process.env.POLICE_ROLE_ID;
 
-  /* ===============================
-     👤 CRIAR RG (CIDADÃO)
-  ================================ */
+  /* 👤 CRIAR RG */
   if (interaction.commandName === 'criar_rg') {
     db.get(
       `SELECT * FROM rgs WHERE userId = ?`,
@@ -165,21 +176,43 @@ client.on('interactionCreate', async interaction => {
         const embed = new EmbedBuilder()
           .setTitle('🆔 RG RP — CONEXÃO BAHIA')
           .setColor('#0A3D62')
-          .setImage('attachment://rg.png')
-          .setFooter({ text: 'Sistema Oficial RP' });
+          .setImage('attachment://rg.png');
 
         interaction.reply({ embeds: [embed], files: [file] });
       }
     );
   }
 
-  /* ===============================
-     👮 ALTERAR STATUS (POLÍCIA)
-  ================================ */
+  /* 👤 VER RG */
+  if (interaction.commandName === 'ver_rg') {
+    db.get(
+      `SELECT * FROM rgs WHERE userId = ?`,
+      [interaction.user.id],
+      async (err, rg) => {
+        if (!rg) {
+          return interaction.reply({
+            content: '❌ Você não possui RG.',
+            ephemeral: true
+          });
+        }
+
+        const buffer = await gerarRG(
+          rg,
+          interaction.user.displayAvatarURL({ extension: 'png' })
+        );
+
+        interaction.reply({
+          files: [new AttachmentBuilder(buffer, { name: 'rg.png' })]
+        });
+      }
+    );
+  }
+
+  /* 👮 POLÍCIA */
   if (interaction.commandName === 'alterar_status') {
     if (!interaction.member.roles.cache.has(POLICE_ROLE_ID)) {
       return interaction.reply({
-        content: '🚫 Apenas policiais.',
+        content: '🚫 Apenas policiais podem usar este comando.',
         ephemeral: true
       });
     }
@@ -202,7 +235,7 @@ client.on('interactionCreate', async interaction => {
    🔐 LOGIN
 ================================ */
 client.once('ready', () => {
-  console.log(`🤖 Online como ${client.user.tag}`);
+  console.log(`🤖 Bot online como ${client.user.tag}`);
 });
 
 client.login(process.env.DISCORD_TOKEN);
