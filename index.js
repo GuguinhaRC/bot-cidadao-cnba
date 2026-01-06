@@ -98,12 +98,13 @@ client.on("interactionCreate", async interaction => {
   // 🆔 CRIAR RG
   // ===============================
   if (interaction.commandName === "criar_rg") {
+    await interaction.deferReply(); // 🔥 ESSENCIAL
+
     const userId = interaction.user.id;
 
     if (db[userId]) {
-      return interaction.reply({
-        content: "❌ Você já possui um RG registrado.",
-        ephemeral: true
+      return interaction.editReply({
+        content: "❌ Você já possui um RG registrado."
       });
     }
 
@@ -127,10 +128,14 @@ client.on("interactionCreate", async interaction => {
 
     saveDB(db);
 
-    const image = await gerarRG(db[userId], interaction.user.displayAvatarURL({ extension: "png" }));
+    const image = await gerarRG(
+      db[userId],
+      interaction.user.displayAvatarURL({ extension: "png" })
+    );
+
     const attachment = new AttachmentBuilder(image, { name: "rg.png" });
 
-    await interaction.reply({
+    await interaction.editReply({
       content: "✅ **RG RP criado com sucesso!**",
       files: [attachment]
     });
