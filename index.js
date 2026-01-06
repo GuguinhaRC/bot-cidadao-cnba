@@ -31,7 +31,7 @@ const dbPath = path.join(__dirname, "database", "rg.json");
 
 function loadDB() {
   if (!fs.existsSync(dbPath)) return {};
-  return JSON.parse(fs.readFileSync(dbPath));
+  return JSON.parse(fs.readFileSync(dbPath, "utf8"));
 }
 
 function saveDB(data) {
@@ -92,15 +92,15 @@ client.once("ready", async () => {
 client.on("interactionCreate", async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
-  const db = loadDB();
-
   // ===============================
   // 🆔 CRIAR RG
   // ===============================
   if (interaction.commandName === "criar_rg") {
-    await interaction.deferReply(); // 🔧 ADIÇÃO NECESSÁRIA
+    await interaction.deferReply(); // ✅ PRIMEIRA LINHA (CORREÇÃO CRÍTICA)
 
     try {
+      const db = loadDB(); // ⬅ agora seguro
+
       const userId = interaction.user.id;
 
       if (db[userId]) {
@@ -144,7 +144,7 @@ client.on("interactionCreate", async interaction => {
     } catch (err) {
       console.error("ERRO CRIAR_RG:", err);
       await interaction.editReply({
-        content: "❌ Erro ao criar o RG. Verifique os arquivos do bot."
+        content: "❌ Erro interno ao criar o RG. Verifique os arquivos."
       });
     }
   }
@@ -153,6 +153,8 @@ client.on("interactionCreate", async interaction => {
   // 🚨 STATUS RG (POLÍCIA)
   // ===============================
   if (interaction.commandName === "status_rg") {
+    const db = loadDB();
+
     if (!interaction.member.roles.cache.some(r => r.name.toLowerCase().includes("policia"))) {
       return interaction.reply({ content: "❌ Apenas policiais.", ephemeral: true });
     }
@@ -178,7 +180,8 @@ async function gerarRG(data, avatarURL) {
   const canvas = createCanvas(800, 500);
   const ctx = canvas.getContext("2d");
 
-  const base = await loadImage(path.join(__dirname, "assets", "rg_base.png"));
+  const basePath = path.join(__dirname, "assets", "rg_base.png");
+  const base = await loadImage(basePath);
   ctx.drawImage(base, 0, 0, 800, 500);
 
   const avatar = await loadImage(avatarURL);
