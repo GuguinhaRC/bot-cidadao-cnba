@@ -84,6 +84,10 @@ client.once("ready", async () => {
 // 🔹 INTERAÇÕES
 // ===============================
 client.on("interactionCreate", async interaction => {
+
+  // 🔥 LOG DE VIDA (DEBUG)
+  console.log("INTERAÇÃO RECEBIDA:", interaction.commandName);
+
   try {
     if (!interaction.isChatInputCommand()) return;
 
@@ -93,7 +97,7 @@ client.on("interactionCreate", async interaction => {
     // 🆔 CRIAR RG
     // ===============================
     if (interaction.commandName === "criar_rg") {
-      await interaction.deferReply({ ephemeral: false });
+      await interaction.deferReply();
 
       const userId = interaction.user.id;
 
