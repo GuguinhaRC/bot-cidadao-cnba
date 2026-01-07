@@ -1,8 +1,7 @@
 // ===============================
-// 🤖 BOT CIDADÃO RP - INDEX FINAL
+// 🤖 BOT CIDADÃO RP - RG EM EMBED
 // ===============================
 
-// 🔹 Imports
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
@@ -12,9 +11,8 @@ const {
   SlashCommandBuilder,
   REST,
   Routes,
-  AttachmentBuilder
+  EmbedBuilder
 } = require("discord.js");
-const { createCanvas, loadImage } = require("canvas");
 
 // ===============================
 // 🔹 CLIENT
@@ -24,7 +22,7 @@ const client = new Client({
 });
 
 // ===============================
-// 🔹 BANCO DE DADOS (JSON)
+// 🔹 BANCO DE DADOS
 // ===============================
 const dbPath = path.join(__dirname, "database", "rg.json");
 
@@ -64,7 +62,7 @@ const commands = [
           { name: "Preso", value: "PRESO" }
         )
     )
-].map(cmd => cmd.toJSON());
+].map(c => c.toJSON());
 
 // ===============================
 // 🔹 REGISTRAR COMANDOS
@@ -83,16 +81,11 @@ client.once("ready", async () => {
 });
 
 // ===============================
-// 🔹 INTERAÇÕES (ANTI-TIMEOUT)
+// 🔹 INTERAÇÕES
 // ===============================
 client.on("interactionCreate", async interaction => {
   try {
     if (!interaction.isChatInputCommand()) return;
-
-    // 🔥 ACK IMEDIATO (IMPOSSÍVEL TRAVAR)
-    if (interaction.commandName === "criar_rg") {
-      await interaction.deferReply();
-    }
 
     const db = loadDB();
 
@@ -100,10 +93,12 @@ client.on("interactionCreate", async interaction => {
     // 🆔 CRIAR RG
     // ===============================
     if (interaction.commandName === "criar_rg") {
+      await interaction.deferReply({ ephemeral: false });
+
       const userId = interaction.user.id;
 
       if (db[userId]) {
-        return interaction.editReply("❌ Você já possui um RG.");
+        return interaction.editReply("❌ Você já possui um RG registrado.");
       }
 
       const data = {
@@ -119,15 +114,23 @@ client.on("interactionCreate", async interaction => {
       db[userId] = data;
       saveDB(db);
 
-      const buffer = await gerarRG(
-        data,
-        interaction.user.displayAvatarURL({ extension: "png" })
-      );
+      const embed = new EmbedBuilder()
+        .setTitle("🆔 REGISTRO GERAL — CIDADÃO RP")
+        .setColor(0x1e90ff)
+        .setThumbnail(interaction.user.displayAvatarURL())
+        .addFields(
+          { name: "👤 Nome", value: data.nome, inline: true },
+          { name: "🎂 Idade", value: String(data.idade), inline: true },
+          { name: "💼 Profissão", value: data.profissao, inline: true },
+          { name: "🌎 Nacionalidade", value: data.nacionalidade, inline: true },
+          { name: "🎮 Roblox", value: data.roblox, inline: true },
+          { name: "🆔 Número do RG", value: String(data.rg), inline: true },
+          { name: "🚨 Status", value: data.status, inline: true }
+        )
+        .setFooter({ text: "Sistema de Identidade RP" })
+        .setTimestamp();
 
-      await interaction.editReply({
-        content: "✅ **RG criado com sucesso!**",
-        files: [new AttachmentBuilder(buffer, { name: "rg.png" })]
-      });
+      await interaction.editReply({ embeds: [embed] });
     }
 
     // ===============================
@@ -148,11 +151,11 @@ client.on("interactionCreate", async interaction => {
       db[user.id].status = status;
       saveDB(db);
 
-      await interaction.reply(`🚨 Status alterado para **${status}**`);
+      await interaction.reply(`🚨 Status do RG de ${user} alterado para **${status}**`);
     }
 
   } catch (err) {
-    console.error("ERRO CRÍTICO:", err);
+    console.error("ERRO:", err);
 
     if (interaction.deferred || interaction.replied) {
       await interaction.editReply("❌ Erro interno do bot.");
@@ -161,31 +164,6 @@ client.on("interactionCreate", async interaction => {
     }
   }
 });
-
-// ===============================
-// 🎨 GERAR RG
-// ===============================
-async function gerarRG(data, avatarURL) {
-  const canvas = createCanvas(800, 500);
-  const ctx = canvas.getContext("2d");
-
-  const base = await loadImage(path.join(__dirname, "assets", "rg_base.png"));
-  ctx.drawImage(base, 0, 0, 800, 500);
-
-  const avatar = await loadImage(avatarURL);
-  ctx.drawImage(avatar, 40, 120, 150, 150);
-
-  ctx.fillStyle = "#000";
-  ctx.font = "20px Arial";
-  ctx.fillText(`Nome: ${data.nome}`, 220, 160);
-  ctx.fillText(`Idade: ${data.idade}`, 220, 190);
-  ctx.fillText(`Profissão: ${data.profissao}`, 220, 220);
-  ctx.fillText(`Nacionalidade: ${data.nacionalidade}`, 220, 250);
-  ctx.fillText(`RG: ${data.rg}`, 220, 280);
-  ctx.fillText(`Status: ${data.status}`, 220, 310);
-
-  return canvas.toBuffer();
-}
 
 // ===============================
 // 🔹 LOGIN
