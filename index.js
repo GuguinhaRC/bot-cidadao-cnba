@@ -12,8 +12,7 @@ const {
   SlashCommandBuilder,
   REST,
   Routes,
-  AttachmentBuilder,
-  EmbedBuilder
+  AttachmentBuilder
 } = require("discord.js");
 const { createCanvas, loadImage } = require("canvas");
 
@@ -75,113 +74,102 @@ client.once("ready", async () => {
 
   const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 
-  try {
-    await rest.put(
-      Routes.applicationCommands(process.env.CLIENT_ID),
-      { body: commands }
-    );
-    console.log("✅ Comandos registrados com sucesso!");
-  } catch (err) {
-    console.error("❌ Erro ao registrar comandos:", err);
-  }
+  await rest.put(
+    Routes.applicationCommands(process.env.CLIENT_ID),
+    { body: commands }
+  );
+
+  console.log("✅ Comandos registrados");
 });
 
 // ===============================
-// 🔹 INTERAÇÕES
+// 🔹 INTERAÇÕES (ANTI-TIMEOUT)
 // ===============================
 client.on("interactionCreate", async interaction => {
-  if (!interaction.isChatInputCommand()) return;
+  try {
+    if (!interaction.isChatInputCommand()) return;
 
-  // ===============================
-  // 🆔 CRIAR RG
-  // ===============================
-  if (interaction.commandName === "criar_rg") {
-    await interaction.deferReply(); // ✅ PRIMEIRA LINHA (CORREÇÃO CRÍTICA)
+    // 🔥 ACK IMEDIATO (IMPOSSÍVEL TRAVAR)
+    if (interaction.commandName === "criar_rg") {
+      await interaction.deferReply();
+    }
 
-    try {
-      const db = loadDB(); // ⬅ agora seguro
+    const db = loadDB();
 
+    // ===============================
+    // 🆔 CRIAR RG
+    // ===============================
+    if (interaction.commandName === "criar_rg") {
       const userId = interaction.user.id;
 
       if (db[userId]) {
-        return interaction.editReply({
-          content: "❌ Você já possui um RG registrado."
-        });
+        return interaction.editReply("❌ Você já possui um RG.");
       }
 
-      const nome = interaction.options.getString("nome");
-      const idade = interaction.options.getInteger("idade");
-      const profissao = interaction.options.getString("profissao");
-      const nacionalidade = interaction.options.getString("nacionalidade");
-      const roblox = interaction.options.getString("roblox");
-
-      const rgNumero = Math.floor(100000 + Math.random() * 900000);
-
-      db[userId] = {
-        nome,
-        idade,
-        profissao,
-        nacionalidade,
-        roblox,
-        rg: rgNumero,
+      const data = {
+        nome: interaction.options.getString("nome"),
+        idade: interaction.options.getInteger("idade"),
+        profissao: interaction.options.getString("profissao"),
+        nacionalidade: interaction.options.getString("nacionalidade"),
+        roblox: interaction.options.getString("roblox"),
+        rg: Math.floor(100000 + Math.random() * 900000),
         status: "LIMPO"
       };
 
+      db[userId] = data;
       saveDB(db);
 
-      const image = await gerarRG(
-        db[userId],
+      const buffer = await gerarRG(
+        data,
         interaction.user.displayAvatarURL({ extension: "png" })
       );
 
-      const attachment = new AttachmentBuilder(image, { name: "rg.png" });
-
       await interaction.editReply({
-        content: "✅ **RG RP criado com sucesso!**",
-        files: [attachment]
-      });
-
-    } catch (err) {
-      console.error("ERRO CRIAR_RG:", err);
-      await interaction.editReply({
-        content: "❌ Erro interno ao criar o RG. Verifique os arquivos."
+        content: "✅ **RG criado com sucesso!**",
+        files: [new AttachmentBuilder(buffer, { name: "rg.png" })]
       });
     }
-  }
 
-  // ===============================
-  // 🚨 STATUS RG (POLÍCIA)
-  // ===============================
-  if (interaction.commandName === "status_rg") {
-    const db = loadDB();
+    // ===============================
+    // 🚨 STATUS RG
+    // ===============================
+    if (interaction.commandName === "status_rg") {
+      if (!interaction.member.roles.cache.some(r => r.name.toLowerCase().includes("policia"))) {
+        return interaction.reply({ content: "❌ Apenas policiais.", ephemeral: true });
+      }
 
-    if (!interaction.member.roles.cache.some(r => r.name.toLowerCase().includes("policia"))) {
-      return interaction.reply({ content: "❌ Apenas policiais.", ephemeral: true });
+      const user = interaction.options.getUser("cidadao");
+      const status = interaction.options.getString("status");
+
+      if (!db[user.id]) {
+        return interaction.reply({ content: "❌ RG não encontrado.", ephemeral: true });
+      }
+
+      db[user.id].status = status;
+      saveDB(db);
+
+      await interaction.reply(`🚨 Status alterado para **${status}**`);
     }
 
-    const user = interaction.options.getUser("cidadao");
-    const status = interaction.options.getString("status");
+  } catch (err) {
+    console.error("ERRO CRÍTICO:", err);
 
-    if (!db[user.id]) {
-      return interaction.reply({ content: "❌ RG não encontrado.", ephemeral: true });
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply("❌ Erro interno do bot.");
+    } else {
+      await interaction.reply({ content: "❌ Erro interno do bot.", ephemeral: true });
     }
-
-    db[user.id].status = status;
-    saveDB(db);
-
-    await interaction.reply(`🚨 Status do RG alterado para **${status}**`);
   }
 });
 
 // ===============================
-// 🎨 GERAR IMAGEM RG
+// 🎨 GERAR RG
 // ===============================
 async function gerarRG(data, avatarURL) {
   const canvas = createCanvas(800, 500);
   const ctx = canvas.getContext("2d");
 
-  const basePath = path.join(__dirname, "assets", "rg_base.png");
-  const base = await loadImage(basePath);
+  const base = await loadImage(path.join(__dirname, "assets", "rg_base.png"));
   ctx.drawImage(base, 0, 0, 800, 500);
 
   const avatar = await loadImage(avatarURL);
@@ -195,12 +183,6 @@ async function gerarRG(data, avatarURL) {
   ctx.fillText(`Nacionalidade: ${data.nacionalidade}`, 220, 250);
   ctx.fillText(`RG: ${data.rg}`, 220, 280);
   ctx.fillText(`Status: ${data.status}`, 220, 310);
-
-  if (data.status === "PROCURADO") {
-    ctx.fillStyle = "rgba(255,0,0,0.7)";
-    ctx.font = "bold 60px Arial";
-    ctx.fillText("PROCURADO", 200, 430);
-  }
 
   return canvas.toBuffer();
 }
